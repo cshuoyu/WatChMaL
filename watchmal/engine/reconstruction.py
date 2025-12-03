@@ -7,10 +7,10 @@ import numpy as np
 from datetime import datetime
 from abc import ABC, abstractmethod
 import logging
-
+import time
 # hydra imports
 from hydra.utils import instantiate
-
+from muon import MuonWithAuxAdam
 # torch imports
 import torch
 from torch.nn.parallel import DistributedDataParallel
@@ -82,23 +82,45 @@ class ReconstructionEngine(ABC):
         self.criterion = instantiate(loss_config)
 
     def configure_optimizers(self, optimizer_config):
-        """Instantiate an optimizer from a hydra config."""
-        params_to_optimize = [{'params': self.module.parameters(), 'name': 'model_params'}]
-        if self.criterion is not None and list(self.criterion.parameters()):
+        is_muon = "MuonWithAuxAdam" in optimizer_config.get('_target_', '')
+
+        if is_muon:
             if self.rank == 0:
-                print("Criterion has trainable parameters, adding them to optimizer.")
-            params_to_optimize.append({'params': self.criterion.parameters(), 'name': 'loss_params'})
+                print("Configuring optimizer: MuonWithAuxAdam")
+            hidden_weights = [p for p in self.module.parameters() if p.ndim >= 2 and p.requires_grad]
+            other_params = [p for p in self.module.parameters() if p.ndim < 2 and p.requires_grad]
+            if self.rank == 0:
+                print(f"Separated parameters into Muon group ({sum(p.numel() for p in hidden_weights)}) and auxiliary AdamW group ({sum(p.numel() for p in other_params)}).")
+            if self.criterion is not None and list(self.criterion.parameters()):
+                criterion_params = list(self.criterion.parameters())
+                other_params.extend(criterion_params)
+                if self.rank == 0:
+                    print(f"Found {sum(p.numel() for p in criterion_params)} trainable criterion parameters and added them to the auxiliary AdamW group.")
+            param_groups = [
+                dict(params=hidden_weights, use_muon=True,
+                     lr=optimizer_config.lr, weight_decay=optimizer_config.weight_decay),
+                dict(params=other_params, use_muon=False,
+                     lr=optimizer_config.aux_lr, betas=optimizer_config.aux_betas, weight_decay=optimizer_config.aux_weight_decay),
+            ]
+            self.optimizer = MuonWithAuxAdam(param_groups)
         else:
-            if self.rank == 0:
-                print("Criterion has no trainable parameters, optimizing model parameters only.")
-        optimizer_partial = instantiate(optimizer_config, _partial_=True)
-        self.optimizer = optimizer_partial(params=params_to_optimize)
-        total_params = sum(p.numel() for p in self.module.parameters() if p.requires_grad)
-        opt_params = sum(p.numel() for g in self.optimizer.param_groups for p in g['params'])
-        if self.criterion is not None:
-            total_params += sum(p.numel() for p in self.criterion.parameters() if p.requires_grad)
-        print(f"Total trainable parameters (model + loss): {total_params}")
-        print(f"Total parameters passed to optimizer: {opt_params}")
+            params_to_optimize = [{'params': self.module.parameters(), 'name': 'model_params'}]
+            if self.criterion is not None and list(self.criterion.parameters()):
+                if self.rank == 0:
+                    print("Criterion has trainable parameters, adding them to optimizer.")
+                params_to_optimize.append({'params': self.criterion.parameters(), 'name': 'loss_params'})
+            else:
+                if self.rank == 0:
+                    print("Criterion has no trainable parameters, optimizing model parameters only.")
+            optimizer_partial = instantiate(optimizer_config, _partial_=True)
+            self.optimizer = optimizer_partial(params=params_to_optimize)
+            total_params = sum(p.numel() for p in self.module.parameters() if p.requires_grad)
+            opt_params = sum(p.numel() for g in self.optimizer.param_groups for p in g['params'])
+            if self.criterion is not None:
+                total_params += sum(p.numel() for p in self.criterion.parameters() if p.requires_grad)
+            print(f"Total trainable parameters (model + loss): {total_params}")
+            print(f"Total parameters passed to optimizer: {opt_params}")
+
 
     def configure_scheduler(self, scheduler_config):
         """Instantiate a scheduler from a hydra config."""
@@ -226,6 +248,8 @@ class ReconstructionEngine(ABC):
         start_time = datetime.now()
         step_time = start_time
         epoch_start_time = start_time
+
+    
         for self.epoch in range(epochs):
             if self.rank == 0:
                 if self.epoch > 0:
@@ -233,6 +257,7 @@ class ReconstructionEngine(ABC):
                     epoch_start_time = datetime.now()
                 log.info(f"Epoch {self.epoch+1} starting at {datetime.now()}")
 
+                        
             train_loader = self.data_loaders["train"]
             self.step = 0
             # update seeding for distributed samplers
@@ -272,7 +297,11 @@ class ReconstructionEngine(ABC):
                               f" Epoch time {step_time-epoch_start_time}"
                               f" Total time {step_time-start_time}")
                         print(f"  Training   {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())}")
-                    self.validate(val_iter, num_val_batches, checkpointing)
+                        t0_val = time.perf_counter()
+                        val_duration = self.validate(val_iter, num_val_batches, checkpointing)
+                        if self.rank == 0:
+                            print(f"  Validation time: {val_duration:.3f}s")
+
             # save state at end of epoch
             if self.rank == 0 and (save_interval is not None) and ((self.epoch+1) % save_interval == 0):
                 self.save_state(suffix=f'_epoch_{self.epoch+1}')
@@ -297,6 +326,7 @@ class ReconstructionEngine(ABC):
             Whether to save the current state to disk.
         """
         # set model to eval mode
+        t0 = time.perf_counter() 
         self.model.eval()
         val_metrics = None
         for val_batch in range(num_val_batches):
@@ -321,6 +351,7 @@ class ReconstructionEngine(ABC):
         # record the validation stats to the csv
         val_metrics = {k: v/num_val_batches for k, v in val_metrics.items()}
         val_metrics = self.get_synchronized_metrics(val_metrics)
+        val_time_sec = time.perf_counter() - t0
         if self.rank == 0:
             log_entries = {"iteration": self.iteration, "epoch": self.epoch, **val_metrics, "saved_best": False}
             # Save if this is the best model so far
@@ -338,7 +369,8 @@ class ReconstructionEngine(ABC):
             self.val_log.log(log_entries)
         # return model to training mode
         self.model.train()
-
+        return val_time_sec 
+    
     def evaluate(self, report_interval=20):
         """Evaluate the performance of the trained model on the test set."""
         log.info(f"Evaluating, output to directory: {self.dump_path}")
@@ -436,11 +468,11 @@ class ReconstructionEngine(ABC):
             if self.is_distributed:
                 torch.distributed.barrier()
             # torch interprets the file, then we can access using string keys
-            checkpoint = torch.load(f, map_location=self.device)
+            checkpoint = torch.load(f, map_location=self.device, weights_only=False)
             # load network weights
-            self.module.load_state_dict(checkpoint['state_dict'])
+            self.module.load_state_dict(checkpoint['state_dict'], strict=False)
             # if optim is provided, load the state of the optim
-            if self.optimizer is not None:
-                self.optimizer.load_state_dict(checkpoint['optimizer'])
+            #if self.optimizer is not None:
+            #    self.optimizer.load_state_dict(checkpoint['optimizer'])
             # load iteration count
             self.iteration = checkpoint['global_step']

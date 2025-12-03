@@ -1,4 +1,12 @@
 '''
+Author: Shuoyu Chen shuoyuchen.physics@gmail.com
+Date: 2025-09-17 11:46:07
+LastEditors: Shuoyu Chen shuoyuchen.physics@gmail.com
+LastEditTime: 2025-09-20 22:12:22
+FilePath: /schen/workspace/WatChMaL/watchmal/engine/regression_DI.py
+Description: 
+'''
+'''
 Here is adapted from regression.py to work with double image input.
 '''
 import torch
@@ -9,7 +17,7 @@ from collections.abc import Mapping
 # define some useful metrics for different regression targets
 metric_functions = {
     'positions':  # mean 3D position error
-        lambda x, y: torch.mean(torch.linalg.vector_norm(x-y, dim=1)),
+        lambda x, y: torch.mean(torch.linalg.vector_norm(x-y, dim=-1)),
     'directions':  # mean angle between directions
         lambda x, y: torch.mean(torch.arccos(torch.clamp(torch.sum(x*y, dim=-1)
                                                          / torch.linalg.vector_norm(x, dim=-1), -1, 1))),
@@ -19,7 +27,6 @@ metric_functions = {
     'energies':  # mean fractional error
         lambda x, y: torch.mean((x - y) / y),
 }
-
 
 class RegressionEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a regression network."""
@@ -58,8 +65,7 @@ class RegressionEngine(ReconstructionEngine):
 
     def process_data(self, data):
         """Extract the event data and target from the input data dict"""
-        self.data_main   = data["data_main"].to(self.device)    # [B, 2, 192,192]
-        self.data_second = data["data_second"].to(self.device)  # [B,38,192,192]
+        self.data = data['data'].to(self.device)
         self.target = {t: data[t].to(self.device) for t in self.target_key}
         # First time we get data, determine the target sizes
         if self.target_sizes is None:
@@ -83,24 +89,46 @@ class RegressionEngine(ReconstructionEngine):
             # scale and stack the targets for calculating the loss
             target = torch.column_stack([(v - self.offset[t]) / self.scale[t] for t, v in self.target.items()])
             # evaluate the model on the data and reshape output to match the target
-            model_out = self.model(self.data_main, self.data_second).reshape(target.shape)
-            print(['Val', 'Train'][train], end='\t')
-            print(f'M:{model_out[0].tolist()};T:{target[0].tolist()}')
+            model_out = self.model(self.data).reshape(target.shape)
             # calculate the loss
-            target = target.to(torch.float32)
-            model_out = model_out.to(torch.float32)
             self.loss = self.criterion(model_out, target)
             # split the output for each target
             split_model_out = torch.split(model_out, self.target_sizes, dim=1)
             # return outputs including the unscaled target dictionary plus elements for the corresponding predictions
+            outputs = self.target | {"predicted_"+t: o*self.scale[t] + self.offset[t]
+                                     for t, o in zip(self.target.keys(), split_model_out)}
+            metrics = {t+" error": metric_functions[t](outputs["predicted_"+t], v)
+                       for t, v in self.target.items() if t in metric_functions}
+            metrics['loss'] = self.loss
+        return outputs, metrics
+
+class RegressionDIEngine(RegressionEngine):
+
+
+    def __init__(self, target_key, model, rank, device, dump_path, **kwargs):
+        super().__init__(target_key, model, rank, device, dump_path, **kwargs)
+
+    def process_data(self, data):
+        self.data_main   = data["data_main"].to(self.device)
+        self.data_second = data["data_second"].to(self.device)
+        self.target = {t: data[t].to(self.device) for t in self.target_key}
+        if self.target_sizes is None:
+            self.target_sizes = [v.shape[1] if len(v.shape) > 1 else 1 for v in self.target.values()]
+
+    def forward(self, train=True):
+        with torch.set_grad_enabled(train):
+            target = torch.column_stack([(v - self.offset[t]) / self.scale[t] for t, v in self.target.items()])
+            model_out = self.model(self.data_main, self.data_second).reshape(target.shape)
+            self.loss = self.criterion(model_out.to(torch.float32), target.to(torch.float32))
+            split_model_out = torch.split(model_out, self.target_sizes, dim=1)
             outputs = self.target.copy()
             predicted_dict = {
                 "predicted_" + t: o * self.scale[t] + self.offset[t]
                 for t, o in zip(self.target.keys(), split_model_out)
             }
             outputs.update(predicted_dict)
-            metrics = {}
-            # metrics = {t+" error": metric_functions[t](outputs["predicted_"+t], v)
-            #            for t, v in self.target.items() if t in metric_functions}
+            metrics = {t+" error": metric_functions[t](outputs["predicted_"+t], v)
+                       for t, v in self.target.items() if t in metric_functions}
             metrics['loss'] = self.loss
+            
         return outputs, metrics

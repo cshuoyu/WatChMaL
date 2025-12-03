@@ -10,11 +10,12 @@ defaults:
   - data: hk_split
   - data/dataset: hk_cnn
   - model: resnet152_direction
-  - engine: regression_direction
+  - engine: regression_position
  # - tasks/restore_state: restore_state_direction
-  - tasks/train: train_resnet  
-  - optimizers@tasks.train.optimizers: adam_direction
-  - loss@tasks.train.loss: huber_direction
-  - sampler@tasks.train.data_loaders.train.sampler: subset_sequential
-  - sampler@tasks.train.data_loaders.validation.sampler: subset_sequential
+  - tasks/train: train_transformer
+  - optimizers@tasks.train.optimizers: adamW_momentum
+  - scheduler@tasks.train.scheduler: cosinelr
+  - loss@tasks.train.loss: huber_position
+  - sampler@tasks.train.data_loaders.train.sampler: subset_random
+  - sampler@tasks.train.data_loaders.validation.sampler: subset_random
   - _self_

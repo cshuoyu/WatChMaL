@@ -1,6 +1,6 @@
 _target_: watchmal.dataset.cnn.cnn_dataset.CNNDataset
-pmt_positions_file: /disk/schen/workspace/WatChMaL/new_HK_20inchPMT_image_positions.npz
-geometry_file:  /disk/schen/workspace/WatChMaL/HK_20inchPMT_real_info.npz
+pmt_positions_file: /home/schen/new_HK_20inchPMT_image_positions.npz
+geometry_file:  /home/schen/HK_20inchPMT_real_info.npz
 #collapse_arrays: False
 
 use_times: True

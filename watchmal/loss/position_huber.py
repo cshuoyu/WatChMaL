@@ -1,3 +1,11 @@
+'''
+Author: Shuoyu Chen shuoyuchen.physics@gmail.com
+Date: 2025-07-28 09:08:59
+LastEditors: Shuoyu Chen shuoyuchen.physics@gmail.com
+LastEditTime: 2025-07-28 09:14:49
+FilePath: /schen/workspace/WatChMaL/watchmal/loss/position_huber.py
+Description: 
+'''
 import torch
 import torch.nn as nn
 
@@ -9,7 +17,7 @@ class PositionHuberLoss(nn.Module):
 
     def forward(self, pred, target):
         error_vector = pred - target
-        euclidean_distance = torch.linalg.vector_norm(error_vector, dim=1)
+        euclidean_distance = torch.linalg.vector_norm(error_vector, dim=-1)
         abs_error = euclidean_distance
         quadratic = torch.minimum(abs_error, torch.tensor(self.delta, device=abs_error.device))
         linear = abs_error - quadratic

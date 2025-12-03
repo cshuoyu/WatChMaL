@@ -1,10 +1,10 @@
 gpu_list:
   - 0
   - 1
-seed: 8
+seed: 42
 dump_path: './outputs/'
 model:
-  num_output_channels: 1
+  num_output_channels: 3
 defaults:
   - data: hk_split_di
   - data/dataset: hk_dit2tvit
@@ -14,7 +14,7 @@ defaults:
   - tasks/train: train_transformer
   - optimizers@tasks.train.optimizers: adamW_momentum
   - scheduler@tasks.train.scheduler: cosinelr
-  - loss@tasks.train.loss: huber_momentum
+  - loss@tasks.train.loss: huber_direction
   - sampler@tasks.train.data_loaders.train.sampler: subset_sequential
   - sampler@tasks.train.data_loaders.validation.sampler: subset_sequential
   - _self_

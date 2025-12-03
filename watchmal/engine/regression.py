@@ -6,7 +6,7 @@ from collections.abc import Mapping
 # define some useful metrics for different regression targets
 metric_functions = {
     'positions':  # mean 3D position error
-        lambda x, y: torch.mean(torch.linalg.vector_norm(x-y, dim=1)),
+        lambda x, y: torch.mean(torch.linalg.vector_norm(x-y, dim=-1)),
     'directions':  # mean angle between directions
         lambda x, y: torch.mean(torch.arccos(torch.clamp(torch.sum(x*y, dim=-1)
                                                          / torch.linalg.vector_norm(x, dim=-1), -1, 1))),
@@ -61,6 +61,7 @@ class RegressionEngine(ReconstructionEngine):
         if self.target_sizes is None:
             self.target_sizes = [v.shape[1] if len(v.shape) > 1 else 1 for v in self.target.values()]
 
+
     def forward(self, train=True):
         """
         Compute predictions and metrics for a batch of data
@@ -81,12 +82,14 @@ class RegressionEngine(ReconstructionEngine):
             # evaluate the model on the data and reshape output to match the target
             model_out = self.model(self.data).reshape(target.shape)
             # calculate the loss
+
             self.loss = self.criterion(model_out, target)
             # split the output for each target
             split_model_out = torch.split(model_out, self.target_sizes, dim=1)
             # return outputs including the unscaled target dictionary plus elements for the corresponding predictions
             outputs = self.target | {"predicted_"+t: o*self.scale[t] + self.offset[t]
                                      for t, o in zip(self.target.keys(), split_model_out)}
+                                     
             metrics = {t+" error": metric_functions[t](outputs["predicted_"+t], v)
                        for t, v in self.target.items() if t in metric_functions}
             metrics['loss'] = self.loss
@@ -98,6 +101,14 @@ class MultiTaskRegressionEngine(RegressionEngine):
 
         super().__init__(target_key, model, rank, device, dump_path, **kwargs)
 
+    def process_data(self, data):
+        self.data = data['data'].to(self.device)
+        self.target = {t: data[t].to(self.device) for t in self.target_key}
+        for task, target_tensor in self.target.items():
+            if target_tensor.dim() == 3 and target_tensor.shape[1] == 1:
+                self.target[task] = target_tensor.squeeze(1)
+        if self.target_sizes is None:
+            self.target_sizes = [v.shape[2] if len(v.shape) > 2 else 1 for v in self.target.values()]
     def forward(self, train=True):
         with torch.set_grad_enabled(train):
             model_out_dict = self.model(self.data)
@@ -105,8 +116,6 @@ class MultiTaskRegressionEngine(RegressionEngine):
 
             for t in self.target_key:
                 scaled_target = (self.target[t] - self.offset.get(t, 0.0)) / self.scale.get(t, 1.0)
-                if scaled_target.shape[1] == 1 and len(scaled_target.shape) > 2:
-                    scaled_target = scaled_target.squeeze(1)
                 scaled_target_dict[t] = scaled_target
             self.loss, loss_details_dict = self.criterion(model_out_dict, scaled_target_dict)
             

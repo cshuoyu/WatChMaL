@@ -1,11 +1,13 @@
 _target_: watchmal.engine.regression.MultiTaskRegressionEngine
-target_key: ['positions','directions','energies']
+target_key: ['directions','positions',  'energies']
 target_scale_factor: 
-    positions: 4000
     directions: 1
+    positions: 4000
     energies: 2000
+
+
 target_scale_offset:
-  positions: 0
-  directions: 0
-  energies: 0
+    directions: 0
+    positions: 0
+    energies: 0
 

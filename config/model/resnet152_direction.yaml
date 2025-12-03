@@ -1,6 +1,5 @@
 _target_: watchmal.model.resnet.resnet152
-num_input_channels: 6
+num_input_channels: 2
 num_output_channels: 3
 conv_pad_mode: zeros
-dropout_p: 0.2
-group_norm: True
+group_norm: False

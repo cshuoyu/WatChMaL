@@ -2,7 +2,7 @@
 Author: Shuoyu Chen shuoyuchen.physics@gmail.com
 Date: 2025-07-16 11:13:55
 LastEditors: Shuoyu Chen shuoyuchen.physics@gmail.com
-LastEditTime: 2025-07-16 11:13:56
+LastEditTime: 2025-08-29 16:52:58
 FilePath: /schen/workspace/WatChMaL/watchmal/loss/direction_huber.py
 Description: 
 '''
@@ -19,8 +19,8 @@ class DirectionHuberLoss(nn.Module):
 
     def forward(self, pred, target):
   
-        pred_normalized = F.normalize(pred, p=2, dim=1, eps=self.eps)
-        target_normalized = F.normalize(target, p=2, dim=1, eps=self.eps)
+        pred_normalized = F.normalize(pred, p=2, dim=-1, eps=self.eps)
+        target_normalized = F.normalize(target, p=2, dim=-1, eps=self.eps)
         dot_product = torch.sum(pred_normalized * target_normalized, dim=-1)
         dot_product = torch.clamp(dot_product, -1.0, 1.0)
         one_minus_cosine = 1.0 - dot_product

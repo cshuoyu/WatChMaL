@@ -2,7 +2,7 @@
 Author: Shuoyu Chen shuoyuchen.physics@gmail.com
 Date: 2025-07-16 11:05:40
 LastEditors: Shuoyu Chen shuoyuchen.physics@gmail.com
-LastEditTime: 2025-07-22 21:03:11
+LastEditTime: 2025-07-27 20:43:33
 FilePath: /schen/workspace/WatChMaL/watchmal/loss/uncertainty_loss.py
 Description: 
 '''
@@ -35,7 +35,7 @@ class UncertaintyLoss(nn.Module):
             precision = torch.exp(-log_var)
             base_loss_func = self.task_losses[task]
             base_loss = base_loss_func(pred, target)
-            task_loss = 0.5 * precision * base_loss + 0.5 * log_var
+            task_loss = precision * base_loss +  log_var
             total_loss += task_loss
             log_dict[f'loss_{task}'] = base_loss
             log_dict[f'variance_{task}'] = torch.exp(log_var)

@@ -1,1 +1,3 @@
-split_path: /disk/schen/workspace/train/mpmt_pmt_5m.npz
+split_path: /home/schen/mpmt_pmt_5m.npz
+dataset:
+  h5file: /home/schen/mpmt_pmt_5m.h5

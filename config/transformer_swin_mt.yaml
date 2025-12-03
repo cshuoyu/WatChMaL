@@ -8,7 +8,7 @@ defaults:
   - data/dataset: hk_vit
   - model: transformer_swin_mt
   - engine: regression_mt
- # - tasks/restore_state: restore_state_tr
+  - tasks/restore_state: restore_state_tr
   - tasks/train: train_transformer
   - optimizers@tasks.train.optimizers: adamW_momentum
   - scheduler@tasks.train.scheduler: cosinelr

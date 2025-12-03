@@ -2,7 +2,7 @@
 Author: Shuoyu Chen shuoyuchen.physics@gmail.com
 Date: 2025-07-22 19:45:09
 LastEditors: Shuoyu Chen shuoyuchen.physics@gmail.com
-LastEditTime: 2025-07-22 21:42:05
+LastEditTime: 2025-07-27 21:16:17
 FilePath: /schen/workspace/WatChMaL/watchmal/model/SwinTransformer.py
 Description: 
 '''
@@ -42,6 +42,7 @@ class SwinRegressor(nn.Module):
         return out
 
 
+
 class MultiTaskSwin(nn.Module):
     def __init__(
         self,
@@ -50,26 +51,27 @@ class MultiTaskSwin(nn.Module):
         img_size=(192, 192),
         in_chans=2,
         drop_path_rate=0.0,
-        task_output_dims={"positions": 3, "directions": 3, "energies": 1},
+        task_output_dims={'positions': 3, 'directions': 3, 'energies': 1}
     ):
         super().__init__()
-        self.backbone = timm.create_model(
-            model_name,
+        
+        self.task_names = list(task_output_dims.keys())
+        self.task_dims = list(task_output_dims.values())
+        total_output_channels = sum(self.task_dims)
+        self.regressor = SwinRegressor(
+            model_name=model_name,
             pretrained=pretrained,
-            in_chans=in_chans,
             img_size=img_size,
-            drop_path_rate=drop_path_rate,
-            num_classes=0,
+            in_chans=in_chans,
+            num_output_channels=total_output_channels, 
+            drop_path_rate=drop_path_rate
         )
-        num_features = self.backbone.num_features
-        self.task_heads = nn.ModuleDict()
-        for task_name, output_dim in task_output_dims.items():
-            self.task_heads[task_name] = nn.Linear(num_features, output_dim)
-
     def forward(self, x):
-        features = self.backbone(x)
+        combined_output = self.regressor(x)
+        split_outputs = torch.split(combined_output, self.task_dims, dim=1)
         outputs = {
-            task_name: head(features) for task_name, head in self.task_heads.items()
+            task_name: tensor
+            for task_name, tensor in zip(self.task_names, split_outputs)
         }
         return outputs
     
