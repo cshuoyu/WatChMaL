@@ -1,0 +1,25 @@
+_target_: watchmal.engine.dino.DINOEngine
+target_key: null
+teacher_momentum: 0.996
+teacher_momentum_final: null
+teacher_momentum_steps: null
+num_teacher_views: 2
+num_student_views: 2
+view_generator:
+  _target_: watchmal.engine.dino.DINOViewGenerator
+  time_channel: 0
+  charge_channel: 1
+  hit_threshold: 0.0
+  teacher_hit_dropout: [0.0, 0.02]
+  teacher_time_jitter: [0.0, 0.2]
+  teacher_charge_jitter: [0.0, 0.01]
+  student_hit_dropout: [0.0, 0.05]
+  student_time_jitter: [0.5, 1.5]
+  student_charge_jitter: [0.02, 0.08]
+  student_mask_fraction: [0.5, 0.8]
+  student_block_sizes: [12, 16, 24, 32]
+  student_max_blocks: 12
+  student_max_attempts: 50
+  min_hits_for_block_mask: 100
+  dark_noise_mean: 10.0
+  dark_noise_charge: [0.02, 0.2]

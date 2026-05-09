@@ -1,0 +1,20 @@
+defaults:
+ - /optimizers: muon
+ - /loss: huber_custom
+ - /data_loaders:
+   - train
+   - validation
+epochs: 20
+val_interval: 50
+num_val_batches: 4
+checkpointing: false
+data_loaders:
+  train:
+    split_key: train_idxs
+    batch_size: 128
+    num_workers: 8
+  validation:
+    split_key: val_idxs
+    batch_size: 128
+    num_workers: 8
+    drop_last: true

@@ -1,0 +1,12 @@
+gpu_list:
+  - 0
+seed: 8
+dump_path: './outputs/'
+defaults:
+  - data: vit_data
+  - model: swintSI_dino
+  - engine: dino
+  - tasks/train: train_dino
+  - override optimizers@tasks.train.optimizers: muon
+  - override loss@tasks.train.loss: dino
+  - _self_

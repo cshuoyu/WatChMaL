@@ -1,0 +1,9 @@
+_target_: watchmal.loss.dino.DINOLoss
+out_dim: 1024
+student_temp: 0.1
+teacher_temp: 0.04
+center_momentum: 0.9
+target_method: center  # "center" (DINO-v1 EMA) or "sinkhorn" (Panda/Sonata balanced assignment)
+sinkhorn_iters: 3
+teacher_temp_final: null  # set to e.g. 0.07 to enable Panda-style warmup
+teacher_temp_warmup_steps: null

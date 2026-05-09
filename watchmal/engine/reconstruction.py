@@ -493,8 +493,13 @@ class ReconstructionEngine(ABC):
             # prevent loading while DDP operations are happening
             if self.is_distributed:
                 torch.distributed.barrier()
-            # torch interprets the file, then we can access using string keys
-            self.state_data = torch.load(f, map_location=self.device)
+            # torch interprets the file, then we can access using string keys.
+            # PyTorch >= 2.6 defaults torch.load to weights_only=True, which
+            # can reject full training checkpoints with optimizer state.
+            try:
+                self.state_data = torch.load(f, map_location=self.device, weights_only=False)
+            except TypeError:
+                self.state_data = torch.load(f, map_location=self.device)
             # load network weights
             self.module.load_state_dict(self.state_data['state_dict'])
             # if optim is provided, load the state of the optim

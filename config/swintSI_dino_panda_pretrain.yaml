@@ -1,0 +1,42 @@
+gpu_list:
+  - 0
+seed: 8
+dump_path: './outputs/'
+defaults:
+  - data: vit_data
+  - model: swintSI_dino
+  - engine: dino
+  - tasks/train: train_dino
+  - override optimizers@tasks.train.optimizers: muon
+  - override loss@tasks.train.loss: dino
+  - _self_
+
+# Panda/Sonata-style overrides for server pre-training.
+#
+# Sinkhorn N/K rule of thumb:
+#   N_teacher = batch_size * num_teacher_views    (per-rank; multiply by world_size for DDP)
+#   For balanced assignment to be meaningful we want N_teacher >= K (ideally >> K).
+#   Panda achieves this with point-level features (huge implicit N); we are
+#   event-level so N is just batch * num_teacher_views.
+# Defaults below assume batch_size=32 and num_teacher_views=2 -> N=64 per rank,
+# matched to K=64. If you scale batch up (or run multi-rank), bump K accordingly:
+#   N=128  -> K up to 128
+#   N=256  -> K up to 256 (closer to what Sonata/Panda use)
+# num_student_views does not enter Sinkhorn N -- it only adds loss terms.
+model:
+  dino_out_dim: 64
+engine:
+  teacher_momentum: 0.994
+  teacher_momentum_final: 1.0
+  teacher_momentum_steps: 60000
+  num_teacher_views: 2
+  num_student_views: 6
+tasks:
+  train:
+    loss:
+      out_dim: 64
+      target_method: sinkhorn
+      sinkhorn_iters: 3
+      teacher_temp: 0.04
+      teacher_temp_final: 0.07
+      teacher_temp_warmup_steps: 5000
